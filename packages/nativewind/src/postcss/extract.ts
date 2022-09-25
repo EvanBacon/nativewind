@@ -103,6 +103,9 @@ function addRule(
       parentSelector,
     } = getSelector(selectorNode);
 
+    // Invalid selector, skip it
+    if (!selector) return;
+
     createOptions[selector] ??= { styles: [] };
 
     if (parentSelector) {

@@ -4,7 +4,6 @@ import { readdirSync, lstatSync, existsSync } from "node:fs";
 import micromatch from "micromatch";
 
 import type { NodePath, types } from "@babel/core";
-import type { VisitorState } from "./index";
 import { PlatformOSType } from "react-native";
 
 const platforms: PlatformOSType[] = [
@@ -25,7 +24,8 @@ for (const platform of platforms) {
 
 export function getImportBlockedComponents(
   path: NodePath<types.ImportDeclaration>,
-  state: VisitorState
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  state: any
 ): string[] {
   const {
     filename,

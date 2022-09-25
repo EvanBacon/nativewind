@@ -1,9 +1,15 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, sep, posix, join, dirname, relative } from "node:path";
-import { statSync, mkdirSync, existsSync, readFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 
 import type { ConfigAPI, NodePath, PluginPass, Visitor } from "@babel/core";
+import template from "@babel/template";
+
+import findCacheDir from "find-cache-dir";
+import chokidar from "chokidar";
+import micromatch from "micromatch";
+
 import { addNamed, addSideEffect } from "@babel/helper-module-imports";
+
 import {
   Expression,
   identifier,
@@ -11,7 +17,6 @@ import {
   isJSXIdentifier,
   isJSXMemberExpression,
   isJSXSpreadAttribute,
-  isStringLiteral,
   jSXAttribute,
   jsxClosingElement,
   jsxElement,
@@ -27,17 +32,17 @@ import {
   memberExpression,
 } from "@babel/types";
 
-import micromatch from "micromatch";
 import type { Config } from "tailwindcss";
-import resolveConfigPath from "tailwindcss/lib/util/resolveConfigPath";
 import resolveConfig from "tailwindcss/resolveConfig";
+import resolveConfigPath from "tailwindcss/lib/util/resolveConfigPath";
 import { validateConfig } from "tailwindcss/lib/util/validateConfig";
 
 // import { getImportBlockedComponents } from "./get-import-blocked-components";
 import { extractStyles } from "../postcss/extract";
-import { outputWriter } from "./fs-writer";
 
 export interface TailwindcssReactNativeBabelOptions {
+  isInContent?: boolean;
+  didTransform?: boolean;
   allowModuleTransform?: "*" | string[];
   blockModuleTransform?: string[];
   mode?: "compileAndTransform" | "compileOnly" | "transformOnly";
@@ -45,6 +50,17 @@ export interface TailwindcssReactNativeBabelOptions {
   tailwindConfigPath?: string;
   tailwindConfig?: Config | undefined;
 }
+
+const cacheDirectory = findCacheDir({ name: "nativewind", create: true });
+if (!cacheDirectory) throw new Error("Unable to secure cache directory");
+
+const stylesFile = join(cacheDirectory, "styles.js");
+const cssCacheFile = join(cacheDirectory, "styles.css");
+
+const watcher =
+  process.env.NODE_ENV === "development"
+    ? chokidar.watch(cacheDirectory)
+    : undefined;
 
 export default function (
   api: ConfigAPI,
@@ -63,17 +79,15 @@ export default function (
   if (userConfigPath === null) {
     tailwindConfig = resolveConfig(options.tailwindConfig);
   } else {
-    api.cache.using(() => statSync(userConfigPath).mtimeMs);
-
-    // eslint-disable-next-line @typescript-eslint/no-var-requires,unicorn/prefer-module
     delete require.cache[require.resolve(userConfigPath)];
-    // eslint-disable-next-line @typescript-eslint/no-var-requires,unicorn/prefer-module
-    const userConfig = require(userConfigPath);
-
-    const newConfig = resolveConfig(userConfig);
-
+    const newConfig = resolveConfig(require(userConfigPath));
     tailwindConfig = validateConfig(newConfig);
   }
+
+  const safelist =
+    tailwindConfig.safelist && tailwindConfig.safelist.length > 0
+      ? tailwindConfig.safelist
+      : ["babel-empty"];
 
   /**
    * Resolve their content paths
@@ -95,29 +109,20 @@ export default function (
   let canCompile = true;
   let canTransform = true;
 
-  switch (options.mode) {
-    case "compileOnly": {
-      canTransform = false;
-      break;
-    }
-    case "transformOnly": {
-      canCompile = false;
-      break;
-    }
+  if (options.mode === "compileOnly") {
+    canTransform = false;
+  } else if (options.mode === "transformOnly") {
+    canCompile = false;
   }
 
-  const outputDirectory = resolve(
-    // We could use nativewind here, but it breaks the tests
-    // as nativewind doesn't exists in our node_modules!
-    require.resolve("tailwindcss/package.json"),
-    "../../.cache/nativewind"
-  );
-  if (canCompile) {
-    mkdirSync(outputDirectory, { recursive: true });
-  }
+  let cssCache: string | undefined;
+  watcher?.on("change", (path) => {
+    if (path.endsWith(".css")) {
+      cssCache = readFileSync(path, "utf8");
+    }
+  });
 
-  const blockedComponents = new Map<string, Set<string>>();
-  const didTransform = new Set<string>();
+  const isDevelopment = api.env("development");
 
   const programVisitor: Visitor<
     PluginPass & {
@@ -129,74 +134,76 @@ export default function (
         const filename = state.filename;
         if (!filename) return;
 
-        if (canCompile) {
-          path.traverse({
-            ImportDeclaration(path) {
-              const currentDirectory = dirname(filename);
-              const source = resolve(currentDirectory, path.node.source.value);
-              return compileCSS(
-                path,
-                source,
-                currentDirectory,
-                outputDirectory,
-                tailwindConfig
-              );
-            },
-            CallExpression(path) {
-              if (
-                !("name" in path.node.callee) ||
-                path.node.callee.name !== "require"
-              ) {
-                return;
-              }
-
-              const argument = path.node.arguments[0];
-
-              if (!isStringLiteral(argument)) {
-                return;
-              }
-
-              const currentDirectory = dirname(filename);
-              const source = resolve(currentDirectory, argument.value);
-
-              return compileCSS(
-                path,
-                source,
-                currentDirectory,
-                outputDirectory,
-                tailwindConfig
-              );
-            },
-          });
-        }
-
-        const isInContent = micromatch.isMatch(
+        state.blockList = new Set();
+        state.isInContent = micromatch.isMatch(
           normalizePath(filename),
           contentFilePaths
         );
 
-        if (!isInContent) {
-          path.skip();
-        }
+        if (canCompile && state.isInContent) {
+          path.traverse({
+            ImportDeclaration(path) {
+              const currentDirectory = dirname(filename);
 
-        blockedComponents.set(filename, new Set());
+              const source = resolve(currentDirectory, path.node.source.value);
+
+              if (source.endsWith(".css")) {
+                const css = readFileSync(source, "utf8");
+
+                if (css.includes("@tailwind")) {
+                  // Start watching this file as well
+                  // watcher.add(filename);
+                  // Write the css to disk, this will cause chokidar watchers to fire on all processes
+                  writeFileSync(cssCacheFile, css);
+                  // Write the new styles to disk
+                  writeFileSync(
+                    stylesFile,
+                    `import { NativeWindStyleSheet } from "nativewind";\nNativeWindStyleSheet.create(${JSON.stringify(
+                      extractStyles(tailwindConfig, css)
+                    )});`
+                  );
+                  // Replace the .css import with the stylesFile
+                  addSideEffect(
+                    path,
+                    `./${relative(currentDirectory, stylesFile)}`
+                  );
+                  path.remove();
+                  // After this has been completed, Babel will reevaluate the stylesFile, reloading the styles
+                }
+              }
+            },
+          });
+        }
       },
       exit(path, state) {
-        if (state.filename && didTransform.has(state.filename)) {
+        if (state.didTransform) {
           addNamed(path, "StyledComponent", "nativewind");
+        }
+
+        if (isDevelopment && state.filename) {
+          const styles = extractStyles(
+            {
+              ...tailwindConfig,
+              content: [state.filename],
+              safelist,
+            },
+            cssCache
+          );
+          path.pushContainer(
+            "body",
+            template.ast(
+              `_NativeWindStyleSheet.create(${JSON.stringify(styles)});`
+            )
+          );
+          addNamed(path, "NativeWindStyleSheet", "nativewind");
         }
       },
     },
-    // ImportDeclaration(path, state) {
-    // for (const component of getImportBlockedComponents(path, state)) {
-    //   state.blockList.add(component);
-    // }
-    // },
     JSXElement: {
       exit: (path, state) => {
-        if (!state.filename) return;
+        if (!state.isInContent || !state.filename) return;
 
-        const blockList = blockedComponents.get(state.filename);
+        const blockList = state.blockList as Set<string>;
 
         if (
           !blockList ||
@@ -228,8 +235,7 @@ export default function (
             path.node.children
           )
         );
-
-        didTransform.add(state.filename);
+        state.didTransform = true;
       },
     },
   };
@@ -239,13 +245,22 @@ export default function (
   };
 }
 
-export interface VisitorState extends PluginPass {
-  opts: TailwindcssReactNativeBabelOptions;
-  filename: string;
-  allowModuleTransform: "*" | string[];
-  allowRelativeModules: "*" | string[];
-  blockList: Set<string>;
-}
+// function partialCompileCSS(filename: string, outputFile: string, tailwindConfig: Config) {
+//   // If the file doesn't have any Tailwind styles, it will print a warning
+//   // We force an empty style to prevent this
+//   const safelist =
+//     tailwindConfig.safelist && tailwindConfig.safelist.length > 0
+//       ? tailwindConfig.safelist
+//       : ["babel-empty"];
+
+//       const styles = extractStyles({
+//         ...tailwindConfig,
+//         content: [filename],
+//         safelist,
+//       });
+
+//   outputWriter(outputFile, { ...existingStyles, ...styles });
+// }
 
 function normalizePath(filePath: string) {
   /**
@@ -300,28 +315,6 @@ function toExpression(
     // https://github.com/facebook/jsx/issues/13#issuecomment-54373080
     throw new Error("JSXNamespacedName is not supported by React JSX");
   }
-}
-
-function compileCSS(
-  path: NodePath,
-  source: string,
-  currentDirectory: string,
-  outputDirectory: string,
-  tailwindConfig: Config
-) {
-  if (!source.endsWith(".css")) {
-    return;
-  }
-
-  if (!existsSync(source)) return;
-
-  const css = readFileSync(source, "utf8");
-
-  path.remove();
-  const hash = createHash("md5").update(css).digest("hex");
-  const outputFile = join(outputDirectory, `${hash}.js`);
-  outputWriter(outputFile, extractStyles(tailwindConfig, css));
-  addSideEffect(path, relative(currentDirectory, outputFile));
 }
 
 function someAttributes(path: NodePath<JSXElement>, names: string[]) {

@@ -49,6 +49,7 @@ module.exports = {
         "tailwind/css.js",
         "tailwind/native.js",
         "packages/nativewind/__tests__/*",
+        "packages/nativewind/src/babel/index.ts",
       ],
       rules: {
         "unicorn/prefer-module": "off",

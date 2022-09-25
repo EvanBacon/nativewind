@@ -10,6 +10,8 @@ export function getSelector(node: CssNode) {
   walk(node, (node) => {
     switch (node.type) {
       case "TypeSelector":
+        // We don't support these, so bail early
+        return { selector: "", conditions };
       case "Combinator":
         tokens.push(node.name);
         break;
