@@ -81,7 +81,7 @@ test("styles change when atoms change", () => {
   expect(secondResult.styles).toEqual([{ color: "custom2" }]);
 });
 
-test.only("text-[color:hsl(var(--custom))]", () => {
+test.skip("text-[color:hsl(var(--custom))]", () => {
   NativeWindStyleSheet.setCustomProperties({
     "--custom": "360, 100%, 100%",
   });

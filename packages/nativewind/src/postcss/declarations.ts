@@ -1,5 +1,7 @@
 import { Block, CssNode, Declaration, walk } from "css-tree";
+import { TextProps, TextStyle } from "react-native";
 import { Atom, AtomStyle, StyleWithFunction } from "../style-sheet";
+import { validProperties } from "./valid-styles";
 
 export type StylesAndTopics = Required<Pick<Atom, "styles" | "topics">>;
 
@@ -32,6 +34,10 @@ function processDeclaration(atom: StylesAndTopics, node: Declaration) {
       return flex(atom, node);
     case "flexFlow":
       return flexFlow(atom, node);
+    case "font":
+      return font(atom, node);
+    case "fontFamily":
+      return fontFamily(atom, node);
     default:
       pushStyleNode(atom, node.property, node);
   }
@@ -40,7 +46,7 @@ function processDeclaration(atom: StylesAndTopics, node: Declaration) {
 function pushStyle(
   atom: StylesAndTopics,
   property: string,
-  node?: string | number | StyleWithFunction | CssNode | null
+  node?: string | number | string[] | StyleWithFunction | CssNode | null
 ) {
   if (!node) return;
 
@@ -48,9 +54,13 @@ function pushStyle(
 
   if (value === undefined || value === null) return;
 
-  atom.styles.push({
-    [camelize(property)]: value,
-  });
+  const styleProperty = camelize(property);
+
+  if (validProperties.has(styleProperty)) {
+    atom.styles.push({
+      [camelize(property)]: value,
+    });
+  }
 }
 
 function pushStyleNode(
@@ -67,8 +77,8 @@ function pushStyleNode(
 
 function parseStyleValue(
   atom: StylesAndTopics,
-  node?: string | number | StyleWithFunction | CssNode | null
-): StyleWithFunction | string | number | undefined {
+  node?: string | number | string[] | StyleWithFunction | CssNode | null
+): StyleWithFunction | string | number | string[] | undefined {
   if (!node) return;
 
   if (typeof node === "string") {
@@ -77,6 +87,10 @@ function parseStyleValue(
 
   if (typeof node === "number") {
     return node;
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((n) => parseStyleValue(atom, n)) as string[];
   }
 
   if ("function" in node) {
@@ -346,5 +360,79 @@ function flexFlow(atom: StylesAndTopics, node: Declaration) {
   } else if (children.length === 2) {
     pushStyle(atom, "flexDirection", children[0]);
     pushStyle(atom, "flexWrap", children[1]);
+  }
+}
+
+function font(atom: StylesAndTopics, node: Declaration) {
+  if (node.value.type !== "Value") {
+    return;
+  }
+
+  const children = node.value.children.toArray();
+
+  let fontStyle;
+  let fontVariant: string[] | undefined;
+  let fontWeight: string | number | undefined;
+  let fontStretch: string | undefined;
+  let fontSize: number | undefined;
+
+  for (const child of children) {
+    if (!fontStyle) {
+      if (child.type === "Identifier") {
+        fontStyle = child.name;
+        continue;
+      } else {
+        fontStyle = "normal";
+      }
+    }
+
+    if (!fontVariant) {
+      if (child.type === "Identifier" && child.name === "small-caps") {
+        fontVariant = ["small-caps"];
+        continue;
+      } else {
+        fontVariant = [];
+      }
+    }
+
+    if (!fontWeight) {
+      if (child.type === "Number") {
+        fontWeight = child.value;
+        continue;
+      } else if (child.type === "Identifier" && child.name === "bold") {
+        fontWeight = child.name;
+        continue;
+      }
+    }
+
+    if (!fontStretch && child.type === "Identifier") {
+      fontStretch = "normal";
+      continue;
+    }
+
+    if (!fontSize && child.type === "Number") {
+      fontSize = Number.parseInt(child.value);
+      continue;
+    }
+  }
+
+  if (fontStyle !== "normal") pushStyle(atom, "fontStyle", fontStyle);
+  if (fontVariant && fontVariant?.length > 0) {
+    pushStyle(atom, "fontVariant", fontVariant);
+  }
+}
+
+function fontFamily(atom: StylesAndTopics, node: Declaration) {
+  if (node.value.type !== "Value") {
+    return;
+  }
+
+  const children = node.value.children.toArray();
+  const firstChild = children[0];
+
+  if (firstChild.type === "Identifier") {
+    pushStyle(atom, "fontFamily", firstChild.name);
+  } else if (firstChild.type === "String") {
+    pushStyle(atom, "fontFamily", firstChild.value);
   }
 }

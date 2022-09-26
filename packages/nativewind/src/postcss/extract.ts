@@ -1,5 +1,4 @@
 import postcss from "postcss";
-import postcssColorFunctionalNotation from "postcss-color-functional-notation";
 import { walk, parse, CssNode, Rule, Atrule } from "css-tree";
 
 import tailwind, { Config } from "tailwindcss";
@@ -16,10 +15,9 @@ export function extractStyles(
   tailwindConfig: Config,
   cssInput = "@tailwind components;@tailwind utilities;"
 ) {
-  const tailwindOutput = postcss([
-    tailwind(tailwindConfig),
-    postcssColorFunctionalNotation(),
-  ]).process(cssInput).css;
+  const tailwindOutput = postcss([tailwind(tailwindConfig)]).process(
+    cssInput
+  ).css;
 
   const createOptions: CreateOptions = {};
 
@@ -105,6 +103,7 @@ function addRule(
 
     // Invalid selector, skip it
     if (!selector) return;
+    if (Object.keys(styles).length === 0) return;
 
     createOptions[selector] ??= { styles: [] };
 
@@ -128,13 +127,15 @@ function addRule(
     }
 
     const selectorOptions = createOptions[selector];
-    const currentStyleIndex = selectorOptions.styles.length;
+    if (selectorOptions.styles) {
+      const currentStyleIndex = selectorOptions.styles.length;
 
-    selectorOptions.styles.push(styles);
+      selectorOptions.styles.push(styles);
 
-    if (atRules.length > 0) {
-      selectorOptions.atRules ??= {};
-      selectorOptions.atRules[currentStyleIndex] = atRules;
+      if (atRules.length > 0) {
+        selectorOptions.atRules ??= {};
+        selectorOptions.atRules[currentStyleIndex] = atRules;
+      }
     }
   });
 }

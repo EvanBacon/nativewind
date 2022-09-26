@@ -25,7 +25,7 @@ export type StyleWithFunction = {
 };
 
 export interface Atom {
-  styles: AtomStyle[];
+  styles?: AtomStyle[];
   atRules?: Record<number, Array<AtRuleTuple>>;
   conditions?: string[];
   customProperties?: string[];
@@ -41,7 +41,8 @@ const createSetter =
     setRecord: (newDate: T) => void,
     listeners: Set<Listener<T>>
   ) =>
-  (partialRecord: T | ((value: T) => T)) => {
+  (partialRecord: T | ((value: T) => T) | undefined) => {
+    if (!partialRecord) return;
     const oldRecord = { ...getRecord() };
     setRecord(
       typeof partialRecord === "function"
@@ -207,6 +208,8 @@ function evaluate(name: string, atom: Atom) {
     [name]: atomStyles,
   };
 
+  if (!atom.styles) return;
+
   for (const [index, originalStyles] of atom.styles.entries()) {
     const styles = { ...originalStyles } as Style;
 
@@ -305,7 +308,7 @@ function resolveFunction(
     case "var": {
       const [variable, defaultValue] = resolvedValues;
       if (!variable) return;
-      return topicValues[variable] ?? defaultValue ?? null;
+      return topicValues[variable] ?? defaultValue;
     }
   }
 }
