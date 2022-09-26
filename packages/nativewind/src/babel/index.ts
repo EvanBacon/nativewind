@@ -76,12 +76,60 @@ export default function (
 
   let tailwindConfig: Config;
 
+  const bundler = api.caller((caller) => {
+    if (!caller) return;
+
+    if ("bundler" in caller) {
+      return caller["bundler"];
+    }
+
+    const { name } = caller;
+
+    switch (name) {
+      case "metro": {
+        return "metro";
+      }
+      case "next-babel-turbo-loader": {
+        return "webpack";
+      }
+      case "babel-loader": {
+        return "webpack";
+      }
+    }
+  });
+
+  const platform = api.caller((caller) => {
+    if (!caller) return;
+
+    if ("platform" in caller) {
+      return caller["platform"];
+    } else if (bundler === "webpack") {
+      return "web";
+    }
+  });
+
+  if (platform) {
+    process.env.NATIVEWIND_PLATFORM = platform;
+  }
+
   if (userConfigPath === null) {
     tailwindConfig = resolveConfig(options.tailwindConfig);
   } else {
     delete require.cache[require.resolve(userConfigPath)];
     const newConfig = resolveConfig(require(userConfigPath));
     tailwindConfig = validateConfig(newConfig);
+  }
+
+  const hasPreset = tailwindConfig.presets?.some((preset) => {
+    return (
+      preset &&
+      ("nativewind" in preset ||
+        ("default" in preset && "nativewind" in preset["default"]))
+    );
+  });
+
+  if (!hasPreset) {
+    throw new Error("NativeWind preset was not included");
   }
 
   const safelist =
@@ -180,7 +228,12 @@ export default function (
           addNamed(path, "StyledComponent", "nativewind");
         }
 
-        if (isDevelopment && state.filename) {
+        if (
+          isDevelopment &&
+          canCompile &&
+          state.filename &&
+          state.isInContent
+        ) {
           const styles = extractStyles(
             {
               ...tailwindConfig,
@@ -199,44 +252,42 @@ export default function (
         }
       },
     },
-    JSXElement: {
-      exit: (path, state) => {
-        if (!state.isInContent || !state.filename) return;
+    JSXElement(path, state) {
+      if (!state.isInContent || !state.filename) return;
 
-        const blockList = state.blockList as Set<string>;
+      const blockList = state.blockList as Set<string>;
 
-        if (
-          !blockList ||
-          isWrapper(path.node) ||
-          !canTransform ||
-          !someAttributes(path, ["className", "tw"])
-        ) {
-          return;
-        }
+      if (
+        !blockList ||
+        isWrapper(path.node) ||
+        !canTransform ||
+        !someAttributes(path, ["className", "tw"])
+      ) {
+        return;
+      }
 
-        const name = getElementName(path.node.openingElement);
+      const name = getElementName(path.node.openingElement);
 
-        if (blockList.has(name) || name[0] !== name[0].toUpperCase()) {
-          return;
-        }
+      if (blockList.has(name) || name[0] !== name[0].toUpperCase()) {
+        return;
+      }
 
-        path.replaceWith(
-          jsxElement(
-            jsxOpeningElement(jsxIdentifier("_StyledComponent"), [
-              ...path.node.openingElement.attributes,
-              jSXAttribute(
-                jSXIdentifier("component"),
-                jsxExpressionContainer(
-                  toExpression(path.node.openingElement.name)
-                )
-              ),
-            ]),
-            jsxClosingElement(jsxIdentifier("_StyledComponent")),
-            path.node.children
-          )
-        );
-        state.didTransform = true;
-      },
+      path.replaceWith(
+        jsxElement(
+          jsxOpeningElement(jsxIdentifier("_StyledComponent"), [
+            ...path.node.openingElement.attributes,
+            jSXAttribute(
+              jSXIdentifier("component"),
+              jsxExpressionContainer(
+                toExpression(path.node.openingElement.name)
+              )
+            ),
+          ]),
+          jsxClosingElement(jsxIdentifier("_StyledComponent")),
+          path.node.children
+        )
+      );
+      state.didTransform = true;
     },
   };
 
@@ -244,23 +295,6 @@ export default function (
     visitor: programVisitor,
   };
 }
-
-// function partialCompileCSS(filename: string, outputFile: string, tailwindConfig: Config) {
-//   // If the file doesn't have any Tailwind styles, it will print a warning
-//   // We force an empty style to prevent this
-//   const safelist =
-//     tailwindConfig.safelist && tailwindConfig.safelist.length > 0
-//       ? tailwindConfig.safelist
-//       : ["babel-empty"];
-
-//       const styles = extractStyles({
-//         ...tailwindConfig,
-//         content: [filename],
-//         safelist,
-//       });
-
-//   outputWriter(outputFile, { ...existingStyles, ...styles });
-// }
 
 function normalizePath(filePath: string) {
   /**

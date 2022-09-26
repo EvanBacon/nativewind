@@ -2,7 +2,7 @@
 import { renderHook, act } from "@testing-library/react-hooks";
 import { NativeWindStyleSheet } from "../src";
 import { extractStyles } from "../src/postcss/extract";
-import nativePreset from "../src/tailwind/native-preset";
+import nativePreset from "../src/tailwind";
 
 afterEach(() => {
   NativeWindStyleSheet.reset();
@@ -91,19 +91,18 @@ test.only("text-[color:hsl(var(--custom))]", () => {
     useSync("text-[color:hsl(var(--custom))]")
   );
 
-  console.log(result.current);
-  // expect(result.current.childClasses).toBeUndefined();
-  // expect(result.current.styles).toEqual([]);
+  expect(result.current.childClasses).toBeUndefined();
+  expect(result.current.styles).toEqual([]);
 
-  // act(() => NativeWindStyleSheet.setColorScheme("dark"));
+  act(() => NativeWindStyleSheet.setColorScheme("dark"));
 
-  // expect(result.current.childClasses).toBeUndefined();
-  // expect(result.current.styles).toEqual([{ color: "custom" }]);
+  expect(result.current.childClasses).toBeUndefined();
+  expect(result.current.styles).toEqual([{ color: "custom" }]);
 
-  // act(() => NativeWindStyleSheet.toggleColorScheme());
+  act(() => NativeWindStyleSheet.toggleColorScheme());
 
-  // expect(result.current.childClasses).toBeUndefined();
-  // expect(result.current.styles).toEqual([]);
+  expect(result.current.childClasses).toBeUndefined();
+  expect(result.current.styles).toEqual([]);
 });
 
 // test("dark:text-custom", () => {

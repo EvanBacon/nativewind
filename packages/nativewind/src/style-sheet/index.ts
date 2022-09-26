@@ -288,22 +288,24 @@ function resolveFunction(
   const resolvedValues = style.values.map((value) => resolveFunction(value));
 
   switch (style.function) {
-    case "inbuilt":
-      return [style.function, "(", resolvedValues.join(", "), ")"].join("");
+    case "inbuilt": {
+      const [name, ...values] = resolvedValues;
+      return [name, "(", values.join(", "), ")"].join("");
+    }
     case "vw": {
-      const value = resolvedValues[0];
+      const [value] = resolvedValues;
       if (typeof value !== "number") return;
       return value * (topicValues["device-width"] as number);
     }
     case "vh": {
-      const value = resolvedValues[0];
+      const [value] = resolvedValues;
       if (typeof value !== "number") return;
       return value * (topicValues["device-height"] as number);
     }
     case "var": {
       const [variable, defaultValue] = resolvedValues;
       if (!variable) return;
-      return topicValues[variable] ?? defaultValue;
+      return topicValues[variable] ?? defaultValue ?? null;
     }
   }
 }

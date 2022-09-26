@@ -1,5 +1,3 @@
 {
-  "tailwindConfig": {
-    "content": ["./__tests__/babel/basic/code.{js,ts,jsx,tsx}"]
-  }
+  "tailwindConfigPath": "./__tests__/babel/basic/tailwind.config.js"
 }

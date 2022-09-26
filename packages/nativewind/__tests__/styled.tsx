@@ -1,7 +1,7 @@
+import { render } from "@testing-library/react-native";
 import { NativeWindStyleSheet, styled } from "../src";
 import { extractStyles } from "../src/postcss/extract";
-import nativePreset from "../src/tailwind/native-preset";
-import { render } from "@testing-library/react-native";
+import nativePreset from "../src/tailwind";
 
 afterEach(() => {
   NativeWindStyleSheet.reset();

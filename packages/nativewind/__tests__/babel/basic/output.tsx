@@ -1,5 +1,5 @@
 import { StyledComponent as _StyledComponent } from "nativewind";
-import "../../../node_modules/.cache/nativewind/styles.js";
+import "./../../../node_modules/.cache/nativewind/styles.js";
 import { Text, View } from "react-native";
 export function Test() {
   return (

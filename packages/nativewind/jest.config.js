@@ -20,6 +20,7 @@ module.exports = {
   testPathIgnorePatterns: [
     "/node_modules/",
     "/__tests__/babel/",
+    "/__tests__/archive/",
     "/__tests__/tailwindcss/runner/",
     "/__tests__/style-sheet/tests",
     "/__tests__/types.d.ts",

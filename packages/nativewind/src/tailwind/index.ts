@@ -18,6 +18,7 @@ import { space } from "./plugins/space";
 import { translate } from "./plugins/translate";
 
 const preset: Config = {
+  nativewind: true,
   content: [],
   theme,
   plugins: [

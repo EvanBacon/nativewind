@@ -1,8 +1,9 @@
 import { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
-import { Atom, CreateOptions } from "../style-sheet";
-import nativePreset from "../tailwind/native-preset";
-import { extractStyles } from "./extract";
+
+import { extractStyles } from "../src/postcss/extract";
+import { Atom, CreateOptions } from "../src/style-sheet";
+import nativePreset from "../src/tailwind";
 
 const expectStyle = (style: string, config?: Partial<Config>) => {
   const createOptions = extractStyles({
