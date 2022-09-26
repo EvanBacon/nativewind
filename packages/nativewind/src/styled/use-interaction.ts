@@ -5,13 +5,14 @@ import {
   Platform,
   PressableProps,
   TargetedEvent,
+  MouseEvent,
 } from "react-native";
 import { Action } from "./use-component-state";
 
 declare module "react-native" {
   interface PressableProps {
-    onHoverIn?: (event: MouseEvent) => void;
-    onHoverOut?: (event: MouseEvent) => void;
+    onHoverIn?: ((event: MouseEvent) => void) | null;
+    onHoverOut?: ((event: MouseEvent) => void) | null;
   }
 }
 
