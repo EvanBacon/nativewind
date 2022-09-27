@@ -23,6 +23,7 @@ module.exports = {
       "error",
       {
         allowList: {
+          i: true,
           fn: true,
           prop: true,
           Prop: true,

@@ -4,7 +4,10 @@ import {
   Dimensions,
   EmitterSubscription,
   I18nManager,
+  OpaqueColorValue,
+  PixelRatio,
   Platform,
+  PlatformColor,
   PlatformOSType,
   StyleSheet,
 } from "react-native";
@@ -283,7 +286,7 @@ function evaluate(name: string, atom: Atom) {
 
 function resolveFunction(
   style: StyleWithFunction | string | number
-): string | number | undefined {
+): string | number | OpaqueColorValue | undefined {
   if (typeof style !== "object" || !("function" in style)) {
     return style;
   }
@@ -307,10 +310,62 @@ function resolveFunction(
     }
     case "var": {
       const [variable, defaultValue] = resolvedValues;
-      if (!variable) return;
+      if (typeof variable !== "string") return;
       return topicValues[variable] ?? defaultValue;
     }
+    case "platformSelect": {
+      const specifics = resolveSpecifics(resolvedValues);
+      return Platform.select(specifics);
+    }
+    case "platformColor": {
+      return PlatformColor(
+        ...resolvedValues.filter(
+          (value): value is string => typeof value === "string"
+        )
+      );
+    }
+    case "hairlineWidth":
+      return StyleSheet.hairlineWidth;
+    case "pixelRatio": {
+      if (resolvedValues.length > 0) {
+        const specifics = resolveSpecifics(resolvedValues);
+        return specifics[PixelRatio.get()];
+      } else {
+        return PixelRatio.get();
+      }
+    }
+    case "fontScale": {
+      if (resolvedValues.length > 0) {
+        const specifics = resolveSpecifics(resolvedValues);
+        return specifics[PixelRatio.getFontScale()];
+      } else {
+        return PixelRatio.getFontScale();
+      }
+    }
+    case "getPixelSizeForLayoutSize": {
+      const value = resolvedValues[0];
+      if (typeof value !== "number") return;
+      return PixelRatio.getPixelSizeForLayoutSize(value);
+    }
+    case "roundToNearestPixel": {
+      const value = resolvedValues[0];
+      if (typeof value !== "number") return;
+      return PixelRatio.roundToNearestPixel(value);
+    }
   }
+}
+
+function resolveSpecifics(
+  values: (string | number | OpaqueColorValue | undefined)[]
+) {
+  return Object.fromEntries(
+    values
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => {
+        const [platform, other] = value.split("_");
+        return [platform, resolveFunction(other)];
+      })
+  );
 }
 
 function useSync(
